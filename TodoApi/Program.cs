@@ -20,11 +20,11 @@ builder.Services.AddDbContext<ToDoDbContext>();
 var app = builder.Build();
 app.UseCors();
 
-if (app.Environment.IsDevelopment())
-{
+//if (app.Environment.IsDevelopment())
+//{
     app.UseSwagger();
     app.UseSwaggerUI();
-}
+//}
 
 // שליפת כל המשימות
 app.MapGet("/tasks", async (ToDoDbContext context) =>
