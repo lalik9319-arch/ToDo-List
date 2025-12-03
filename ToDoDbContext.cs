@@ -1,25 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using Microsoft.EntityFrameworkCore;
-using Pomelo.EntityFrameworkCore.MySql.Scaffolding.Internal;
+﻿using Microsoft.EntityFrameworkCore;
 
 namespace TodoApi;
 
 public partial class ToDoDbContext : DbContext
 {
-    public ToDoDbContext()
-    {
-    }
-
     public ToDoDbContext(DbContextOptions<ToDoDbContext> options)
         : base(options)
     {
     }
 
-    public virtual DbSet<Item> Items { get; set; }
-
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        => optionsBuilder.UseMySql("name=ToDoDB", Microsoft.EntityFrameworkCore.ServerVersion.Parse("8.0.44-mysql"));
+    // DbSet מאותחל למנוע אזהרות null
+    public virtual DbSet<Item> Items { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,10 +21,8 @@ public partial class ToDoDbContext : DbContext
         modelBuilder.Entity<Item>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("PRIMARY");
-
-            entity.ToTable("items");
-
-            entity.Property(e => e.Name).HasMaxLength(45);
+            entity.ToTable("Items"); // שם הטבלה תואם למסד הנתונים
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(45);
         });
 
         OnModelCreatingPartial(modelBuilder);

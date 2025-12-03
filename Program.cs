@@ -1,37 +1,51 @@
-using TodoApi;
+using System;
 using Microsoft.EntityFrameworkCore;
-
+using TodoApi;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ======= CORS =======
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()   // מאפשר גישה מכל דומיין
-              .AllowAnyMethod()   // מאפשר כל HTTP method (GET, POST, PUT, DELETE)
-              .AllowAnyHeader();  // מאפשר שליחת כל headers
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
     });
 });
 
+// ======= Swagger =======
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddDbContext<ToDoDbContext>();
-var app = builder.Build();
-app.UseCors();
+// ======= DbContext עם Environment Variable =======
+var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
 
-//if (app.Environment.IsDevelopment())
-//{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-//}
+// החלפת PLACEHOLDER בסיסמה מהסביבה
+var passwordFromEnv = Environment.GetEnvironmentVariable("DB_PASSWORD");
+if (!string.IsNullOrEmpty(passwordFromEnv))
+{
+    connectionString = connectionString.Replace("PLACEHOLDER", passwordFromEnv);
+}
 
-// שליפת כל המשימות
-app.MapGet("/tasks", async (ToDoDbContext context) =>
-    await context.Items.ToListAsync()
+// שימוש ב־AutoDetect לגרסת MySQL
+builder.Services.AddDbContext<ToDoDbContext>(options =>
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString))
 );
 
-// הוספת משימה חדשה
+var app = builder.Build();
+
+// ======= Middleware =======
+app.UseCors();
+app.UseSwagger();
+app.UseSwaggerUI();
+
+// ======= Endpoints =======
+app.MapGet("/", () => "API is running");
+
+app.MapGet("/tasks", async (ToDoDbContext context) => await context.Items.ToListAsync());
+
 app.MapPost("/tasks", async (ToDoDbContext context, Item newItem) =>
 {
     context.Items.Add(newItem);
@@ -39,29 +53,23 @@ app.MapPost("/tasks", async (ToDoDbContext context, Item newItem) =>
     return Results.Created($"/tasks/{newItem.Id}", newItem);
 });
 
-// עדכון משימה
 app.MapPut("/tasks/{id}", async (ToDoDbContext context, int id, Item updatedItem) =>
 {
     var item = await context.Items.FindAsync(id);
     if (item == null) return Results.NotFound();
-
     item.Name = updatedItem.Name;
     item.IsComplete = updatedItem.IsComplete;
-
     await context.SaveChangesAsync();
     return Results.NoContent();
 });
 
-// מחיקת משימה
 app.MapDelete("/tasks/{id}", async (ToDoDbContext context, int id) =>
 {
     var item = await context.Items.FindAsync(id);
     if (item == null) return Results.NotFound();
-
     context.Items.Remove(item);
     await context.SaveChangesAsync();
     return Results.NoContent();
 });
-app.MapGet("/", () => "API is running");
 
 app.Run();
