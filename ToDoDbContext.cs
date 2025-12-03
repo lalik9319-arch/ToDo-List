@@ -21,7 +21,7 @@ public partial class ToDoDbContext : DbContext
         modelBuilder.Entity<Item>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("PRIMARY");
-            entity.ToTable("Items"); // שם הטבלה תואם למסד הנתונים
+            entity.ToTable("todolist");
             entity.Property(e => e.Name).IsRequired().HasMaxLength(45);
         });
 
