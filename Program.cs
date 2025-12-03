@@ -29,10 +29,21 @@ if (!string.IsNullOrEmpty(passwordFromEnv))
     connectionString = connectionString.Replace("PLACEHOLDER", passwordFromEnv);
 }
 
-// שימוש ב־AutoDetect לגרסת MySQL
+// הדפסת ה-connection string (לבדיקה בלבד, בלי סיסמה אמיתית)
+Console.WriteLine("Connection string being used: " + connectionString.Replace(passwordFromEnv ?? "", "*****"));
+
 builder.Services.AddDbContext<ToDoDbContext>(options =>
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString))
-);
+{
+    try
+    {
+        options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+        Console.WriteLine("DbContext configured successfully.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Error configuring DbContext: " + ex.Message);
+    }
+});
 
 var app = builder.Build();
 
@@ -44,32 +55,80 @@ app.UseSwaggerUI();
 // ======= Endpoints =======
 app.MapGet("/", () => "API is running");
 
-app.MapGet("/tasks", async (ToDoDbContext context) => await context.Items.ToListAsync());
+app.MapGet("/tasks", async (ToDoDbContext context) =>
+{
+    try
+    {
+        var tasks = await context.Items.ToListAsync();
+        Console.WriteLine($"Retrieved {tasks.Count} tasks from DB.");
+        return tasks;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Error fetching tasks: " + ex.Message);
+        return Results.Problem("Failed to fetch tasks.");
+    }
+});
 
 app.MapPost("/tasks", async (ToDoDbContext context, Item newItem) =>
 {
-    context.Items.Add(newItem);
-    await context.SaveChangesAsync();
-    return Results.Created($"/tasks/{newItem.Id}", newItem);
+    try
+    {
+        context.Items.Add(newItem);
+        await context.SaveChangesAsync();
+        Console.WriteLine($"Created new task with ID {newItem.Id}");
+        return Results.Created($"/tasks/{newItem.Id}", newItem);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Error creating task: " + ex.Message);
+        return Results.Problem("Failed to create task.");
+    }
 });
 
 app.MapPut("/tasks/{id}", async (ToDoDbContext context, int id, Item updatedItem) =>
 {
-    var item = await context.Items.FindAsync(id);
-    if (item == null) return Results.NotFound();
-    item.Name = updatedItem.Name;
-    item.IsComplete = updatedItem.IsComplete;
-    await context.SaveChangesAsync();
-    return Results.NoContent();
+    try
+    {
+        var item = await context.Items.FindAsync(id);
+        if (item == null)
+        {
+            Console.WriteLine($"Task with ID {id} not found for update.");
+            return Results.NotFound();
+        }
+        item.Name = updatedItem.Name;
+        item.IsComplete = updatedItem.IsComplete;
+        await context.SaveChangesAsync();
+        Console.WriteLine($"Updated task with ID {id}");
+        return Results.NoContent();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Error updating task: " + ex.Message);
+        return Results.Problem("Failed to update task.");
+    }
 });
 
 app.MapDelete("/tasks/{id}", async (ToDoDbContext context, int id) =>
 {
-    var item = await context.Items.FindAsync(id);
-    if (item == null) return Results.NotFound();
-    context.Items.Remove(item);
-    await context.SaveChangesAsync();
-    return Results.NoContent();
+    try
+    {
+        var item = await context.Items.FindAsync(id);
+        if (item == null)
+        {
+            Console.WriteLine($"Task with ID {id} not found for deletion.");
+            return Results.NotFound();
+        }
+        context.Items.Remove(item);
+        await context.SaveChangesAsync();
+        Console.WriteLine($"Deleted task with ID {id}");
+        return Results.NoContent();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Error deleting task: " + ex.Message);
+        return Results.Problem("Failed to delete task.");
+    }
 });
 
 app.Run();
