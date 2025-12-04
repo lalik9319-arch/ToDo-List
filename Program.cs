@@ -4,64 +4,59 @@ using TodoApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ======= CORS =======
+// ======= CORS & Swagger =======
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
     });
 });
-
-// ======= Swagger =======
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ======= DbContext עם Environment Variable =======
-var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
+// ======= DbContext: קריאה ישירה ממשתני סביבה =======
 
-// החלפת PLACEHOLDER בסיסמה מהסביבה
-var passwordFromEnv = Environment.GetEnvironmentVariable("DB_PASSWORD");
-if (!string.IsNullOrEmpty(passwordFromEnv))
+// 1. נסה לקרוא את מחרוזת החיבור המלאה מ-Render (משתנה סביבה)
+var finalConnectionString = Environment.GetEnvironmentVariable("ToDoDB");
+
+// 2. אם המשתנה לא נמצא, קח את זה מ-appsettings.json כגיבוי.
+if (string.IsNullOrEmpty(finalConnectionString))
 {
-    connectionString = connectionString.Replace("PLACEHOLDER", passwordFromEnv);
+    finalConnectionString = builder.Configuration.GetConnectionString("ToDoDB");
+    Console.WriteLine("Warning: Using Connection String from appsettings.json. Ensure security locally.");
+}
+else
+{
+    // מדפיס רק את השרת והמשתמש כדי לוודא שימוש במחרוזת הנכונה (בלי לחשוף סיסמה)
+    // הערה: החלפת נקודה פסיק ב-& לצורך יצירת URI תקין להדפסה בלבד.
+    Console.WriteLine($"Using DB connection for server: {new System.Uri(finalConnectionString.Replace(";", "&")).Host}");
 }
 
-// הדפסת ה-connection string (לבדיקה בלבד, בלי סיסמה אמיתית)
-Console.WriteLine("Connection string being used: " + connectionString.Replace(passwordFromEnv ?? "", "*****"));
 
+// 3. הגדרת ה-DbContext - ללא Try/Catch! אם הסיסמה שגויה, השרת ייכבה.
 builder.Services.AddDbContext<ToDoDbContext>(options =>
 {
-    try
-    {
-        options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
-        Console.WriteLine("DbContext configured successfully.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine("Error configuring DbContext: " + ex.Message);
-    }
+    options.UseMySql(finalConnectionString, ServerVersion.AutoDetect(finalConnectionString));
 });
+
 
 var app = builder.Build();
 
-// ======= Middleware =======
+// ======= Middleware & Endpoints (ללא שינוי מהותי) =======
 app.UseCors();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// ======= Endpoints =======
 app.MapGet("/", () => "API is running");
 
+// Endpoints (אפשרי להסיר את ה-try/catch גם מה-Endpoints, אך נשאיר אותם לטיפול בשגיאות זמן ריצה)
 app.MapGet("/tasks", async (ToDoDbContext context) =>
 {
     try
     {
         var tasks = await context.Items.ToListAsync();
-        Console.WriteLine($"Retrieved {tasks.Count} tasks from DB.");
-        return tasks;
+        return Results.Ok(tasks);
     }
     catch (Exception ex)
     {
@@ -69,6 +64,7 @@ app.MapGet("/tasks", async (ToDoDbContext context) =>
         return Results.Problem("Failed to fetch tasks.");
     }
 });
+// ... (השארת MapPost, MapPut, MapDelete כפי שהם בגרסה הקודמת) ...
 
 app.MapPost("/tasks", async (ToDoDbContext context, Item newItem) =>
 {
@@ -76,7 +72,6 @@ app.MapPost("/tasks", async (ToDoDbContext context, Item newItem) =>
     {
         context.Items.Add(newItem);
         await context.SaveChangesAsync();
-        Console.WriteLine($"Created new task with ID {newItem.Id}");
         return Results.Created($"/tasks/{newItem.Id}", newItem);
     }
     catch (Exception ex)
@@ -91,15 +86,11 @@ app.MapPut("/tasks/{id}", async (ToDoDbContext context, int id, Item updatedItem
     try
     {
         var item = await context.Items.FindAsync(id);
-        if (item == null)
-        {
-            Console.WriteLine($"Task with ID {id} not found for update.");
-            return Results.NotFound();
-        }
+        if (item == null) return Results.NotFound();
+
         item.Name = updatedItem.Name;
         item.IsComplete = updatedItem.IsComplete;
         await context.SaveChangesAsync();
-        Console.WriteLine($"Updated task with ID {id}");
         return Results.NoContent();
     }
     catch (Exception ex)
@@ -114,14 +105,10 @@ app.MapDelete("/tasks/{id}", async (ToDoDbContext context, int id) =>
     try
     {
         var item = await context.Items.FindAsync(id);
-        if (item == null)
-        {
-            Console.WriteLine($"Task with ID {id} not found for deletion.");
-            return Results.NotFound();
-        }
+        if (item == null) return Results.NotFound();
+
         context.Items.Remove(item);
         await context.SaveChangesAsync();
-        Console.WriteLine($"Deleted task with ID {id}");
         return Results.NoContent();
     }
     catch (Exception ex)
